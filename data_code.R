@@ -138,3 +138,5 @@ head(wml_factor)
 # - Fama-French factor data (including Momentum factor)
 #
 # Each section is labeled for clarity in RStudio.
+# The script can be run in its entirety to download and clean the data.
+# The cleaned datasets can then be used for further analysis and modeling.
