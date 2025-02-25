@@ -7,7 +7,8 @@ This repository contains the files and data necessary for working on equity and 
 
 # **If you don't have git installed, first install it from here:**
 https://git-scm.com/downloads
-
+# **Set up an SSH key in RStudio and save to GitHub:**
+Tutorial for this: https://www.youtube.com/watch?v=_Bn78aor_N4
 
 ## **Getting Started with This Repository in RStudio**
 
@@ -16,7 +17,7 @@ https://git-scm.com/downloads
 2. Go to **File > New Project > Version Control > Git**.
 3. In the dialog box:
    - **Repository URL**: Paste the URL of this repository:  
-     `https://github.com/tallosfarkas/PMP_TM2.git`
+     `git@github.com:tallosfarkas/PMP_TM2.git`
    - **Project Directory Name**: Choose a folder name for the project.
    - **Create Project As Subdirectory Of**: Select the folder where you'd like to save the project.
 4. Click **Create Project**.
