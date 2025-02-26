@@ -5,7 +5,9 @@ library(lubridate)
 library(Rblpapi)
 library(quantmod)
 library(xts)
-
+library(dplyr)
+library(tidyr)
+library(mice)
 # Connect to Bloomberg (the Bloomberg Terminal must be open)
 Rblpapi::blpConnect()
 
@@ -21,16 +23,16 @@ print(assetdes)
 head(DT)
 tail(DT)
 summary(DT)
-
+df <- data.frame()
 # Download portfolio data from Bloomberg using a custom function.
-df <- download_port_bbg(start_date = Sys.Date() - years(10))
+df <- download_port_bbg(start_date = Sys.Date() - years(11))
 price <- df$prices  # Portfolio prices
 id <- df$id         # Portfolio identifiers
 
 
 # SECTION 2: DOWNLOAD BLOOMBERG DATA FOR BENCHMARK ASSET CLASSES ----
 # Define date range for Bloomberg data
-start_date <- as.Date("2010-01-01")
+start_date <- as.Date("2014-12-31")
 end_date   <- Sys.Date()
 
 # Define tickers and fields for Bloomberg download.
@@ -129,6 +131,204 @@ wml_factor <- wml_factor[, c("Date", setdiff(names(wml_factor), "Date"))]
 
 # Confirm the new column order.
 head(wml_factor)
+
+
+
+
+
+
+
+
+
+# Define the URL for the daily Fama-French factors dataset (example URL)
+ff_daily_url <- "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_daily_CSV.zip"
+
+# Download the daily factors zip file
+download.file(ff_daily_url, destfile = "F-F_Research_Data_Factors_daily_CSV.zip", mode = "wb")
+
+# Unzip the downloaded file into a directory
+unzip("F-F_Research_Data_Factors_daily_CSV.zip", exdir = "FF_factors_daily")
+
+# List files to confirm extraction
+list.files("FF_factors_daily")
+
+# Read the CSV file (adjust the skip parameter based on the file's structure)
+ff_daily <- read.csv("FF_factors_daily/F-F_Research_Data_Factors_daily.CSV", skip = 3)
+
+# Suppose the date column is named X and is in the format YYYYMMDD:
+ff_daily$Date <- as.Date(as.character(ff_daily$X), format = "%Y%m%d")
+
+# Optionally remove the old 'X' column
+ff_daily$X <- NULL
+
+# Reorder columns to have Date as the leftmost column
+ff_daily <- ff_daily[, c("Date", setdiff(names(ff_daily), "Date"))]
+
+# Check the cleaned daily factors data
+head(ff_daily)
+
+
+
+
+
+
+
+
+
+# SECTION: DOWNLOAD AND CLEAN DAILY MOMENTUM FACTOR (WML) DATA ----
+
+# Define the URL for the daily momentum factor dataset
+wml_daily_url <- "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Momentum_Factor_daily_CSV.zip"
+
+# Download the daily momentum factor zip file
+download.file(wml_daily_url, destfile = "F-F_Momentum_Factor_daily_CSV.zip", mode = "wb")
+
+# Unzip the downloaded file into a directory named "FF_momentum_daily"
+unzip("F-F_Momentum_Factor_daily_CSV.zip", exdir = "FF_momentum_daily")
+
+# (Optional) List the files to verify extraction
+list.files("FF_momentum_daily")
+
+# Read the CSV file
+# Adjust the 'skip' parameter based on the structure of the CSV file.
+# For example, if the first actual data row starts after 14 lines of header text:
+wml_daily <- read.csv("FF_momentum_daily/F-F_Momentum_Factor_daily.CSV",
+                      skip = 14,          # adjust if necessary
+                      header = FALSE,     # assume header is not part of the data rows
+                      na.strings = c("-99.99", "-999")  # handle missing values if applicable
+)
+
+# Assign appropriate column names
+# Typically, the file may have two columns: one for the date and one for the momentum factor.
+colnames(wml_daily) <- c("YYYYMMDD", "WML")
+
+# Convert the date column to an actual Date type (assumes format YYYYMMDD)
+wml_daily$Date <- as.Date(as.character(wml_daily$YYYYMMDD), format = "%Y%m%d")
+
+# Optionally, remove the original date column if you no longer need it
+wml_daily$YYYYMMDD <- NULL
+
+# Reorder columns so that "Date" is the leftmost column
+wml_daily <- wml_daily[, c("Date", setdiff(names(wml_daily), "Date"))]
+
+# Inspect the cleaned daily momentum factor data
+head(wml_daily)
+
+
+
+
+
+# 3. Prepare Daily T-Bill Rates (DTB3) from FRED ----
+# The DTB3 data was already downloaded as a daily xts object using getSymbols()
+# Convert the DTB3 xts object to a data frame
+tbill_daily <- data.frame(Date = index(DTB3), coredata(DTB3))
+# Rename the column (if needed) for clarity
+colnames(tbill_daily)[2] <- "DTB3"
+
+# Inspect the daily T-Bill data
+head(tbill_daily)
+
+
+# 4. Merge All Daily Factors on Date ----
+# Merge the daily FF factors and daily Momentum factor
+daily_factors <- merge(ff_daily, wml_daily, by = "Date", all = TRUE)
+# Merge the result with the T-Bill rates
+daily_factors <- merge(daily_factors, tbill_daily, by = "Date", all = TRUE)
+
+# Inspect the final merged data frame
+head(daily_factors)
+
+
+daily_factors <- daily_factors[daily_factors$Date >= "2023-12-31",]
+#print(daily_factors[daily_factors$Date == "2014-12-31",], digits=22)
+
+
+plot_price_NAs(price)
+
+
+# SECTION 5: CLEAN PORTFOLIO DATA ----
+# remove TT333904     Corp and restrict the timeframe to 2024 - today from returns df
+price_clean <- price[price$id != "TT333904     Corp",]
+price_clean <- price_clean[price_clean$id != "USD Curncy",]
+
+price_clean <- price_clean[price_clean$date >= "2023-12-31",]
+
+plot_price_NAs(price_clean)
+
+# convert the price data to wide format, assets are the cols and the dates are the rows
+price_wide <- price_clean %>% pivot_wider(names_from = id, values_from = px)
+
+head(price_wide)
+
+# plot every asset (col) from price_wide with quantmod chartSeries()
+for (i in 2:ncol(price_wide)) {
+  chartSeries(price_wide[,c(1,i)], theme = chartTheme("white"), name = colnames(price_wide)[i])
+}
+
+
+DT_clean <- DT[DT$date >= "2023-12-31",]
+
+# drop NA rows (WEEKEND)
+DT_clean <- DT_clean[complete.cases(DT_clean),]
+
+# rename all df date col to date (might be Date somewhere) (price clean, daily_factors and DT_clean based on date)
+colnames(price_wide)[colnames(price_wide) == "Date"] <- "date"
+colnames(daily_factors)[colnames(daily_factors) == "Date"] <- "date"
+colnames(DT_clean)[colnames(DT_clean) == "Date"] <- "date"
+#merge all df (price clean, daily_factors and DT_clean based on date) 
+df_for_regrs <- merge(price_wide, daily_factors, by = "date", all = TRUE)
+
+#chop the timeframe at the end of 2024
+df_for_regrs <- df_for_regrs[df_for_regrs$date <= "2024-12-31",]
+#count and plot NAs here
+
+
+# Keep the original data frame
+df_original <- df_for_regrs
+
+# Exclude 'date' column from the imputation process
+# We'll store it separately if we want to merge it back later.
+df_for_imputation <- df_original[, !names(df_original) %in% "date"]
+
+# Check structure
+str(df_for_imputation)
+
+# Run mice with default settings (which often uses predictive mean matching for numeric vars).
+# If you specifically want a "classical" regression approach for numeric columns, you can set method = "norm".
+# method = "norm" => draws model parameters from Bayesian linear regression
+# method = "norm.predict" => uses a linear regression model (deterministic)
+# method = "pmm" => predictive mean matching (default, a bit more robust)
+
+imputed_data <- mice(df_for_imputation,
+                     m = 1,                  # number of imputed datasets to create
+                     method = "norm.predict" # pure linear regression imputation (deterministic)
+)
+
+# 'm' can be >1 if you want multiple imputations; for a single fill, m=1 suffices.
+
+# Now retrieve the completed (imputed) dataset:
+df_imputed <- complete(imputed_data, 1)
+
+
+summary(df_imputed)
+
+df_final <- cbind(date = df_original$date, df_imputed)
+head(df_final)
+str(df_final)
+summary(df_final)
+
+#drop the lasat row of df_final
+df_final <- df_final[1:nrow(df_final)-1,]
+
+#convert to xts the df_final
+df_final_xts <- xts(df_final[,-1], order.by = as.Date(df_final$date))
+
+# plot every asset (col) from df_final with quantmod chartSeries()
+for (i in 2:ncol(df_final)) {
+  chartSeries(df_final[,c(1,i)], theme = chartTheme("white"), name = colnames(df_final)[i])
+}
+
+
 
 
 # END OF SCRIPT ----
