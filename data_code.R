@@ -7,7 +7,8 @@ library(quantmod)
 library(xts)
 library(dplyr)
 library(tidyr)
-library(mice)
+library(imputeTS)
+library(zoo)
 # Connect to Bloomberg (the Bloomberg Terminal must be open)
 Rblpapi::blpConnect()
 
@@ -283,49 +284,54 @@ df_for_regrs <- df_for_regrs[df_for_regrs$date <= "2024-12-31",]
 #count and plot NAs here
 
 
-# Keep the original data frame
+
+
+
+
+
+# Assume df_for_regrs is your original data frame with a 'date' column.
 df_original <- df_for_regrs
 
-# Exclude 'date' column from the imputation process
-# We'll store it separately if we want to merge it back later.
-df_for_imputation <- df_original[, !names(df_original) %in% "date"]
+# Create a copy to hold the imputed data
+df_imputed <- df_original
 
-# Check structure
-str(df_for_imputation)
+# Loop over each numeric column (excluding the 'date' column)
+for (col in setdiff(names(df_imputed), "date")) {
+  # Extract the series
+  series <- df_imputed[[col]]
+  
+  # Calculate the 7-day moving average (centered window)
+  # na.rm = TRUE ensures that we compute the mean from available values.
+  ma_values <- rollapply(series, 
+                         width = 7, 
+                         FUN = function(x) mean(x, na.rm = TRUE), 
+                         fill = NA, 
+                         align = "center")
+  
+  # Replace NA values with the computed moving average where available
+  series_imputed <- ifelse(is.na(series) & !is.na(ma_values), ma_values, series)
+  
+  # For any remaining NA values at the boundaries:
+  # First, fill forward
+  series_imputed <- na_locf(series_imputed)
+  # Then fill backward by reversing the vector, filling forward, and reversing back.
+  series_imputed <- rev(na_locf(rev(series_imputed)))
+  
+  # Store the imputed series back in the data frame
+  df_imputed[[col]] <- series_imputed
+}
 
-# Run mice with default settings (which often uses predictive mean matching for numeric vars).
-# If you specifically want a "classical" regression approach for numeric columns, you can set method = "norm".
-# method = "norm" => draws model parameters from Bayesian linear regression
-# method = "norm.predict" => uses a linear regression model (deterministic)
-# method = "pmm" => predictive mean matching (default, a bit more robust)
+# Optionally, drop the last row of df_imputed if needed
+df_imputed <- df_imputed[1:(nrow(df_imputed) - 1), ]
 
-imputed_data <- mice(df_for_imputation,
-                     m = 1,                  # number of imputed datasets to create
-                     method = "norm.predict" # pure linear regression imputation (deterministic)
-)
+# Convert the resulting data frame to an xts object (excluding the date column)
+df_final_xts <- xts(df_imputed[,-1], order.by = as.Date(df_imputed$date))
 
-# 'm' can be >1 if you want multiple imputations; for a single fill, m=1 suffices.
-
-# Now retrieve the completed (imputed) dataset:
-df_imputed <- complete(imputed_data, 1)
-
-
-summary(df_imputed)
-
-df_final <- cbind(date = df_original$date, df_imputed)
-head(df_final)
-str(df_final)
-summary(df_final)
-
-#drop the lasat row of df_final
-df_final <- df_final[1:nrow(df_final)-1,]
-
-#convert to xts the df_final
-df_final_xts <- xts(df_final[,-1], order.by = as.Date(df_final$date))
-
-# plot every asset (col) from df_final with quantmod chartSeries()
-for (i in 2:ncol(df_final)) {
-  chartSeries(df_final[,c(1,i)], theme = chartTheme("white"), name = colnames(df_final)[i])
+# Plot each asset (each column except date) using quantmod's chartSeries()
+for (i in 2:ncol(df_imputed)) {
+  chartSeries(df_imputed[, c(1, i)], 
+              theme = chartTheme("white"), 
+              name = colnames(df_imputed)[i])
 }
 
 
