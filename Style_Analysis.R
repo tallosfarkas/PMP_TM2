@@ -81,10 +81,36 @@ AC_ret <- AC %>%
   )
 AC_ret <- AC_ret[,-(2:5)]
 
+# New Asset Classes 
+
+euribor_3M <- bloomberg_data_add[[1]]
+colnames(euribor_3M) <- c("date","EURIBOR3M.PX")
+em_govbonds <- bloomberg_data_add[[2]]
+colnames(em_govbonds) <- c("date","EMgovbonds.PX")
+commodities <- bloomberg_data_add[[3]]
+colnames(commodities) <- c("date","commodities.PX")
+
+Add_AC <- euribor_3M %>%
+  left_join(em_govbonds, by = "date") %>%
+  left_join(commodities, by = "date")
+
+Add_AC_ret <- Add_AC %>%
+  mutate(
+    EURIBOR3M.ret = (EURIBOR3M.PX / lag(EURIBOR3M.PX)) - 1,
+    EMgovbonds.ret = (EMgovbonds.PX / lag(EMgovbonds.PX)) - 1,
+    commodities.ret = (commodities.PX / lag(commodities.PX)) - 1,
+  )
+
+Add_AC_ret <- Add_AC_ret[,-(2:4)]
+
+
+
+
 # in order to use quantmod package functions, use xts format
 DT_ret_xts <- xts(DT_ret[, -1], order.by = DT_ret$date)
 ZZ_ret_xts <-xts(ZZ_ret[, -1], order.by = ZZ_ret$date)
 AC_ret_xts <- xts(AC_ret[, -1], order.by = AC_ret$date)
+Add_AC_ret_xts <- xts(Add_AC_ret[, -1], order.by = Add_AC_ret$date)
 
 
 
@@ -125,6 +151,24 @@ for (i in 2:(nrow(AC_ret_w) - 1)) {  # Avoid first and last row
 which(rowSums(is.na(AC_ret_w)) > 0)
 which(colSums(is.na(AC_ret_w)) > 0)
 
+# Additional Asset Classes
+Add_AC_ret_w <- apply.weekly(Add_AC_ret_xts,last)
+Add_AC_ret_w <- Add_AC_ret_w[-209,]
+dim(Add_AC_ret_w)
+which(rowSums(is.na(Add_AC_ret_w)) > 0)
+which(colSums(is.na(Add_AC_ret_w)) > 0)
+
+for (i in 2:(nrow(Add_AC_ret_w) - 1)) {  # Avoid first and last row
+  if (is.na(Add_AC_ret_w$commodities.ret[i])) {
+    Add_AC_ret_w$commodities.ret[i] <- mean(c(Add_AC_ret_w$commodities.ret[i - 1], Add_AC_ret_w$commodities.ret[i + 1]), na.rm = TRUE)
+  }
+}
+
+which(rowSums(is.na(Add_AC_ret_w)) > 0)
+which(colSums(is.na(Add_AC_ret_w)) > 0)
+
+
+
 
 # SECTION 3: QUADRATIC PROGRAMMING
 
@@ -145,6 +189,7 @@ factor_returns <- as.matrix(GF[,(5:8)])  # Factor return matrix (T x n)
 intercept_col <- rep(1,nrow(factor_returns))
 factor_returns <- cbind(intercept_col, factor_returns)
 
+## SUBSECTION 3a: ORIGINAL EXERCISE
 
 for(i in (2:4)){
   fund_returns <- as.matrix(GF[,i])  # Fund return vector (T x 1)
@@ -169,7 +214,45 @@ for(i in (2:4)){
   style_analysis[[i-1]] <- result$solution
 }
 
+## SUBSECTION 3b: ROLLING WINDOW
 
+style_analysis_rolling <- list()
+
+for(i in (2:4)){
+
+  fund_returns <- as.matrix(GF[,i])  # Fund return vector (T x 1)
+  
+  for (j in 53:length(factor_returns)){
+    weekly_results <- data.frame()
+    date_rolling <- GF$Date[j]
+    factor_returns_rolling <- factor_returns[(j-52):j,]
+    fund_returns_rolling <- fund_returns[(j-52):j,]
+    
+    # Create needed matrices in the correct form for quadratic programming
+    # Matrix D
+    D <- 2 * t(factor_returns_rolling) %*% factor_returns_rolling
+    # Linear term d
+    d <- 2 * t(factor_returns_rolling) %*% fund_returns_rolling
+    
+    # Add needed Constraints --> Coeffiecents sum up to one and Non-Negativity
+    n <- ncol(factor_returns_rolling) -1 #leave out the intercept
+    # Constraint Matrix A
+    A <- rbind(c(0, rep(1,n)), cbind(0, diag(n)))
+    # Right-hand side of the constraints
+    b <- c(1, rep(0, n))
+    
+    # Solve quadratic optimization
+    result <- solve.QP(D, d, t(A), b, meq = 1)
+    
+    # Add to list of style analysis
+    weekly_results <- rowbind(weekly_results,c(date_rolling, result$solution))
+  }
+  style_analysis_rolling[[i-1]] <- weekly_results
+}
+
+
+
+# SECTION 4: VISUALIZATION
 # Visualize style loadings for given funds
 
 for (i in (1:3)) {
@@ -247,5 +330,132 @@ pie(c(style,selection),
     col = c("#0057B8", "coral"))  # Colors for each slice
 
 par(mfrow = c(1, 1))
+
+
+
+# SECTION 5: Add the additional asset classes to the analysis 
+
+style_analysis_add <- list()
+
+GF_Add <- inner_join(data.frame(Date = index(DT_ret_w),coredata(DT_ret_w)),
+                 data.frame(Date = index(AC_ret_w),coredata(AC_ret_w)),
+                 by = "Date")
+GF_Add <- inner_join(GF_Add,
+                     data.frame(Date = index(Add_AC_ret_w),coredata(Add_AC_ret_w)),
+                     by = "Date")
+
+
+factor_returns_add <- as.matrix(GF_Add[,(5:11)])  # Factor return matrix (T x n)
+# Add a column of 1s to the factor return matrix for analyzing an intercept alpha
+intercept_col <- rep(1,nrow(factor_returns_add))
+factor_returns_add <- cbind(intercept_col, factor_returns_add)
+
+
+for(i in (2:4)){
+  fund_returns_add <- as.matrix(GF_Add[,i])  # Fund return vector (T x 1)
+  
+  # Create needed matrices in the correct form for quadratic programming
+  # Matrix D
+  D <- 2 * t(factor_returns_add) %*% factor_returns_add
+  # Linear term d
+  d <- 2 * t(factor_returns_add) %*% fund_returns_add
+  
+  # Add needed Constraints --> Coeffiecents sum up to one and Non-Negativity
+  n <- ncol(factor_returns_add) -1 #leave out the intercept
+  # Constraint Matrix A
+  A <- rbind(c(0, rep(1,n)), cbind(0, diag(n)))
+  # Right-hand side of the constraints
+  b <- c(1, rep(0, n))
+  
+  # Solve quadratic optimization
+  result <- solve.QP(D, d, t(A), b, meq = 1)
+  
+  # Add to list of style analysis
+  style_analysis_add[[i-1]] <- result$solution
+}
+
+
+
+for (i in (1:3)) {
+  par(mfrow = c(1, 2))
+  # Create a bar plot
+  bar_data <- style_analysis_add[[i]][-1]
+  names(bar_data) <-  c("US Equity","MSCI World","US Gov Bonds","US TBills","EURIBOR3M","EM Gov Bonds","Commodities")
+  barplot(bar_data, 
+          main = "Style Analysis",  # Title of the chart
+          xlab = "Categories",         # Label for the x-axis
+          ylab = "Loading",             # Label for the y-axis
+          col = "#0057B8",           # Color of the bars
+          border = "black")            # Color of the borders around bars
+  
+  # Create a pie chart
+  sum <- sum(style_analysis_add[[i]])
+  style <- sum(style_analysis_add[[i]][-1]) / sum
+  selection <- style_analysis_add[[i]][1] / sum
+  pie(c(style,selection), 
+      labels = c("Style","Selection"),             # Adding labels
+      main = "Style versus Selection",   # Title of the chart
+      col = c("#0057B8", "coral"))  # Colors for each slice
+  
+  par(mfrow = c(1, 1))
+}
+
+# ZZ Portfolio with additional asset classes
+
+ZZ_add <- inner_join(data.frame(Date = index(ZZ_ret_w),coredata(ZZ_ret_w)),
+                 data.frame(Date = index(AC_ret_w),coredata(AC_ret_w)),by = "Date")
+ZZ_add <- inner_join(ZZ_add,
+                     data.frame(Date = index(Add_AC_ret_w),coredata(Add_AC_ret_w)),by = "Date")
+
+
+factor_returns_add <- as.matrix(ZZ_add[,(3:9)])  # Factor return matrix (T x n)
+# Add a column of 1s to the factor return matrix for analyzing an intercept alpha
+intercept_col <- rep(1,nrow(factor_returns_add))
+factor_returns_add <- cbind(intercept_col, factor_returns_add)
+fund_returns_add <- as.matrix(ZZ_add[,2])  # Fund return vector (T x 1)
+
+# Create needed matrices in the correct form for quadratic programming
+# Matrix D
+D <- 2 * t(factor_returns_add) %*% factor_returns_add
+# Linear term d
+d <- 2 * t(factor_returns_add) %*% fund_returns_add
+
+# Add needed Constraints --> Coeffiecents sum up to one and Non-Negativity
+n <- ncol(factor_returns_add) -1 #leave out the intercept
+# Constraint Matrix A
+A <- rbind(c(0, rep(1,n)), cbind(0, diag(n)))
+# Right-hand side of the constraints
+b <- c(1, rep(0, n))
+
+# Solve quadratic optimization
+result_add <- solve.QP(D, d, t(A), b, meq = 1)
+ZZ_coef_add <- result_add$solution
+names(ZZ_coef_add) <- c("Intercept","US Equity","MSCI World","US Gov Bonds","US TBills","EURIBOR3M","EM Gov Bonds","Commodities")
+
+par(mfrow = c(1, 2))
+# Create a bar plot
+bar_data <- ZZ_coef_add[-1]
+names(bar_data) <-  c("US Equity","MSCI World","US Gov Bonds","US TBills","EURIBOR3M","EM Gov Bonds","Commodities")
+barplot(bar_data, 
+        main = "Style Analysis",  # Title of the chart
+        xlab = "Categories",         # Label for the x-axis
+        ylab = "Loading",             # Label for the y-axis
+        col = "#0057B8",           # Color of the bars
+        border = "black")            # Color of the borders around bars
+
+# Create a pie chart
+sum <- sum(ZZ_coef_add)
+style <- sum(ZZ_coef_add[-1]) / sum
+selection <- ZZ_coef_add[1] / sum
+pie(c(style,selection), 
+    labels = c("Style","Selection"),             # Adding labels
+    main = "Style versus Selection",   # Title of the chart
+    col = c("#0057B8", "coral"))  # Colors for each slice
+
+par(mfrow = c(1, 1))
+
+
+
+
 
 
