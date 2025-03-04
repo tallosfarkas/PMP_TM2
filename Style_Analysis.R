@@ -221,9 +221,9 @@ style_analysis_rolling <- list()
 for(i in (2:4)){
 
   fund_returns <- as.matrix(GF[,i])  # Fund return vector (T x 1)
+  weekly_results <- data.frame()
   
-  for (j in 53:length(factor_returns)){
-    weekly_results <- data.frame()
+  for (j in 53:nrow(factor_returns)){
     date_rolling <- GF$Date[j]
     factor_returns_rolling <- factor_returns[(j-52):j,]
     fund_returns_rolling <- fund_returns[(j-52):j,]
@@ -245,10 +245,13 @@ for(i in (2:4)){
     result <- solve.QP(D, d, t(A), b, meq = 1)
     
     # Add to list of style analysis
-    weekly_results <- rowbind(weekly_results,c(date_rolling, result$solution))
+    weekly_results <- rbind(weekly_results, result$solution)
   }
+  colnames(weekly_results) <- c("Intercept", "US Equity","MSCI World","US Gov Bonds","US TBills")
   style_analysis_rolling[[i-1]] <- weekly_results
 }
+
+
 
 
 
