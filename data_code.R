@@ -180,8 +180,8 @@ for (i in 2:ncol(widePortfolioPrices)) {
               name = colnames(widePortfolioPrices)[i])
 }
 
-# Clean portfolio data DT to include dates from 2023-12-31 onward and remove incomplete rows
-cleanPortfolioDT <- DT[DT$date >= "2023-12-31", ]
+# Clean portfolio data DT to include dates from 2023-12-31 until 2024-12-31  and remove incomplete rows
+cleanPortfolioDT <- DT[DT$date > "2023-12-31" & DT$date <= "2024-12-31", ]
 cleanPortfolioDT <- cleanPortfolioDT[complete.cases(cleanPortfolioDT), ]
 
 

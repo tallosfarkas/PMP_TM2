@@ -85,6 +85,7 @@ Treynor_ratio
 
 
 
+
 ### Calculating the tracking error
 #use quantmod to get the MSCI world dauily rerturns over the period of 2024-01-01 and 2024-12-31
 #assign MSCI
@@ -110,4 +111,109 @@ information_ratio
 
 # export the daily poprtfolio return to a .rda file
 save(Jensen_data, file = "C:/Users/Student2.AzureAD/ZZ Vermögensverwaltung GmbH/ISK-Wien - General/ZZ Gruppe/2024/Personal/Farkas/PMP_TM2/Jensen_data.rda")
+
+cleanPortfolioDT
+head(cleanPortfolioDT)
+#colnames of cleanPortfolioDT
+colnames(cleanPortfolioDT)
+# > colnames(cleanPortfolioDT)
+# [1] "date"      "aqr.TRI"   "aqr.PX"    "brk.TRI"   "brk.PX"    "spdr.TRI"  "spdr.PX"   "t30.TRI"   "t30.PX"   
+# [10] "t25.TRI"   "t25.PX"    "t50.TRI"   "t50.PX"    "wexus.TRI" "wexus.PX"  "usgvt.TRI" "usgvt.PX" 
+
+
+
+# --- Additional Code for cleanPortfolioDT ------------------------------
+
+library(quantmod)
+library(dplyr)
+library(lubridate)
+library(xts)
+
+# Merge cleanPortfolioDT with daily factor data (assumed in dailyFactors)
+data_merged <- merge(cleanPortfolioDT, dailyFactors, by = "date")
+
+# clean the NAs
+data_merged <- data_merged[complete.cases(data_merged), ]
+
+# Function to compute daily return (percentage change)
+calc_daily_return <- function(index_series) {
+  c(NA, diff(index_series) / head(index_series, -1) * 100)
+}
+
+# Identify TRI columns (e.g., ending in ".TRI")
+tri_cols <- names(data_merged)[ grepl("\\.TRI$", names(data_merged)) ]
+
+# Retrieve benchmark (MSCI) returns for tracking error / info ratio.
+# Adjust symbol and dates as needed.
+getSymbols("MSCI", src = "yahoo", from = min(data_merged$date), to = max(data_merged$date))
+MSCI_index <- MSCI
+MSCI_daily_ret <- dailyReturn(MSCI_index) * 100
+# Align benchmark dates with our merged data
+bench_dates <- index(MSCI_daily_ret)
+MSCI_daily_ret <- MSCI_daily_ret[bench_dates %in% data_merged$date]
+MSCI_close <- Cl(MSCI_index)
+MSCI_annual_ret <- (as.numeric(last(MSCI_close)) / as.numeric(first(MSCI_close)) - 1) * 100
+
+# Risk-free rate for annual metrics (as used previously)
+US_1_Y_RF <- 4.784
+
+# Loop over each TRI column to calculate performance metrics
+results_list <- lapply(tri_cols, function(fund) {
+  
+  # Calculate daily returns for the fund
+  fund_return <- calc_daily_return(data_merged[[fund]])
+  
+  temp_df <<- data_merged %>%
+    mutate(fund_return = fund_return) %>%
+    filter(!is.na(fund_return)) %>%
+    filter(date %in% bench_dates)  # Align with benchmark dates
+  
+  # Excess return: fund return minus risk-free rate
+  temp_df <<- temp_df %>% mutate(excess_return = fund_return - RF)
+  
+  # Multifactor regression (Fama-French + momentum)
+  model <- lm(excess_return ~ `Mkt.RF` + SMB + HML + WML, data = temp_df)
+  beta <- coef(model)["Mkt.RF"]
+  multifactor_alpha <- coef(model)[1]
+  
+  # Daily Jensen's alpha = fund_return - RF - beta * Mkt.RF
+  temp_df <<- temp_df %>% mutate(Jensen_Alpha = fund_return - RF - beta * `Mkt.RF`)
+  avg_jensen_alpha <- mean(temp_df$Jensen_Alpha)
+  
+  # Annualized return from TRI index (using first and last values on matching dates)
+  fund_series <- data_merged[[fund]][data_merged$date %in% temp_df$date]
+  ann_return <- ( tail(fund_series, 1) / head(fund_series, 1) - 1 ) * 100
+  ann_excess_return <- ann_return - US_1_Y_RF
+  
+  # Annualized standard deviation of daily excess returns
+  ann_stdev_excess <- sd(temp_df$excess_return) * sqrt(250)
+  
+  Sharpe_ratio <- ann_excess_return / ann_stdev_excess
+  Treynor_ratio <- ann_excess_return / beta
+  
+  # Align benchmark returns for tracking error calculation
+  bench_ret <- MSCI_daily_ret[as.character(temp_df$date)]
+  bench_ret_num <- as.numeric(bench_ret)
+  tracking_error <- sd(temp_df$fund_return - bench_ret_num) * sqrt(250)
+  
+  information_ratio <- (ann_return - MSCI_annual_ret) / tracking_error
+  
+  # Return metrics for the current fund
+  data.frame(
+    Fund = fund,
+    Beta = beta,
+    JensenAlpha = avg_jensen_alpha,
+    MultifactorAlpha = multifactor_alpha,
+    SharpeRatio = Sharpe_ratio,
+    TreynorRatio = Treynor_ratio,
+    TrackingError = tracking_error,
+    InformationRatio = information_ratio,
+    AnnualReturn = ann_return,
+    stringsAsFactors = FALSE
+  )
+})
+
+# Combine results into one data frame
+results_df <- do.call(rbind, results_list)
+print(results_df)
 
