@@ -20,10 +20,13 @@ port_ret_f <- port_ret[port_ret$date >= as.Date("2024-01-02"), ]
 port_ret_f <- port_ret_f[port_ret_f$date <= as.Date("2024-12-31"), ]
 port_ret_f$date = as.Date(port_ret_f$date)
 
-daily_factors_f = daily_factors[daily_factors$date >= as.Date("2024-01-02"), ] 
+daily_factors_f = dailyFactors[dailyFactors$date >= as.Date("2024-01-02"), ] 
 daily_factors_f = daily_factors_f[daily_factors_f$date <= as.Date("2024-12-31"), ] 
 str(port_ret_f)
 str(daily_factors_f)
+#rename daily_factor_f date column to small d date
+names(daily_factors_f)[1] = "date"
+
 
 Jensen_data <- merge(port_ret_f, daily_factors_f, by = "date")
 summary(Jensen_data)
@@ -79,7 +82,7 @@ Treynor_ratio
 
 
 
-### Calculating the Information Ratio
+
 
 
 ### Calculating the tracking error
@@ -91,8 +94,20 @@ MSCI_daily_return = dailyReturn(MSCI)
 # multiply by 100 to get percentage
 MSCI_daily_return = MSCI_daily_return * 100
 # drop the last day of jensen data
-
+# use the dates of jensen data bc MSCI is longer, so they dopnt mastch for st dev
+MSCI_daily_return = MSCI_daily_return[1:dim(Jensen_data)[1]]
+# MSCI overal 1Y return from xts object 
+MSCI_ret_1_Y <- (598.1229/547.6862 - 1)*100
+MSCI_ret_1_Y
 # calculate tracking error
-tracking_error = sd(Jensen_data$port_ex_ret - MSCI_daily_return) * sqrt(250)
+tracking_error = sd(Jensen_data$Portfolio_return - MSCI_daily_return) * sqrt(250)
+tracking_error
 
+### Calculating the Information Ratio
+information_ratio = (portfolio_ret_1_Y - MSCI_ret_1_Y)/tracking_error
+information_ratio
+
+
+# export the daily poprtfolio return to a .rda file
+save(Jensen_data, file = "C:/Users/Student2.AzureAD/ZZ Vermögensverwaltung GmbH/ISK-Wien - General/ZZ Gruppe/2024/Personal/Farkas/PMP_TM2/Jensen_data.rda")
 
