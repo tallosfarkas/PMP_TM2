@@ -8,7 +8,10 @@ library(tidyr)
 library(zoo)
 library(quadprog)
 library(ggplot2)
+library(RColorBrewer)
 library(gridExtra)
+library(reshape2)
+
 
 # SECTION 1: Put Data together
 
@@ -171,7 +174,9 @@ which(colSums(is.na(Add_AC_ret_w)) > 0)
 # Translate the data frames into the form for the constraint quadratic program
 # We need D, the quadratic matrix, the linear term d, the coefficients beta and the constraints
 
-# GIVEN FUNDS OVER FOUR YEARS
+## SUBSECTION 3a: ORIGINAL EXERCISE
+
+# GIVEN FUNDS (over four years)
 
 # Match dates
 
@@ -184,8 +189,6 @@ factor_returns <- as.matrix(GF[,(5:8)])  # Factor return matrix (T x n)
 # Add a column of 1s to the factor return matrix for analyzing an intercept alpha
 intercept_col <- rep(1,nrow(factor_returns))
 factor_returns <- cbind(intercept_col, factor_returns)
-
-## SUBSECTION 3a: ORIGINAL EXERCISE
 
 for(i in (2:4)){
   fund_returns <- as.matrix(GF[,i])  # Fund return vector (T x 1)
@@ -210,8 +213,40 @@ for(i in (2:4)){
   style_analysis[[i-1]] <- result$solution
 }
 
+# ZZ PORTFOLIO (beginning 2024)
+
+ZZ <- inner_join(data.frame(Date = index(ZZ_ret_w),coredata(ZZ_ret_w)),
+                 data.frame(Date = index(AC_ret_w),coredata(AC_ret_w)),by = "Date")
+
+factor_returns_zz <- as.matrix(ZZ[,(3:6)])  # Factor return matrix (T x n)
+# Add a column of 1s to the factor return matrix for analyzing an intercept alpha
+intercept_col <- rep(1,nrow(factor_returns))
+factor_returns_zz <- cbind(intercept_col, factor_returns_zz)
+fund_returns_zz <- as.matrix(ZZ[,2])  # Fund return vector (T x 1)
+
+# Create needed matrices in the correct form for quadratic programming
+# Matrix D
+D <- 2 * t(factor_returns_zz) %*% factor_returns_zz
+# Linear term d
+d <- 2 * t(factor_returns_zz) %*% fund_returns_zz
+
+# Add needed Constraints --> Coeffiecents sum up to one and Non-Negativity
+n <- ncol(factor_returns_zz) -1 #leave out the intercept
+# Constraint Matrix A
+A <- rbind(c(0, rep(1,n)), cbind(0, diag(n)))
+# Right-hand side of the constraints
+b <- c(1, rep(0, n))
+
+# Solve quadratic optimization
+result <- solve.QP(D, d, t(A), b, meq = 1)
+ZZ_coef <- result$solution
+names(ZZ_coef) <- c("Intercept","US Equity","MSCI World","US Gov Bonds","US TBills")
+
+
+
 ## SUBSECTION 3a.i: VISUALIZATION
-# Visualize style loadings for given funds
+
+# Given funds
 
 for (i in (1:3)) {
   par(mfrow = c(1, 2))
@@ -225,14 +260,15 @@ for (i in (1:3)) {
           ylab = "Loading",             # Label for the y-axis
           col = "#0057B8",           # Color of the bars
           border = "black",
-          ylim = c(0, 1))            # Color of the borders around bars
+          ylim = c(0, 1),
+          cex.names = 0.75)            # Color of the borders around bars
   
   # Create a pie chart
   sum <- sum(style_analysis[[i]])
   style <- sum(style_analysis[[i]][-1]) / sum
   selection <- style_analysis[[i]][1] / sum
   pie(c(style,selection), 
-      labels = c("Style","Selection"),             # Adding labels
+      labels = c(paste0("Style [",round(style*100,2),"%]"),paste0("Selection [",round(selection*100,2),"%]")),             # Adding labels
       main = "Style versus Selection",   # Title of the chart
       col = c("#0057B8", "coral"))  # Colors for each slice
   
@@ -242,35 +278,7 @@ for (i in (1:3)) {
   par(mfrow = c(1, 1))
 }
 
-
 # ZZ PORTFOLIO
-
-ZZ <- inner_join(data.frame(Date = index(ZZ_ret_w),coredata(ZZ_ret_w)),
-                 data.frame(Date = index(AC_ret_w),coredata(AC_ret_w)),by = "Date")
-
-factor_returns <- as.matrix(ZZ[,(3:6)])  # Factor return matrix (T x n)
-# Add a column of 1s to the factor return matrix for analyzing an intercept alpha
-intercept_col <- rep(1,nrow(factor_returns))
-factor_returns <- cbind(intercept_col, factor_returns)
-fund_returns <- as.matrix(ZZ[,2])  # Fund return vector (T x 1)
-
-# Create needed matrices in the correct form for quadratic programming
-# Matrix D
-D <- 2 * t(factor_returns) %*% factor_returns
-# Linear term d
-d <- 2 * t(factor_returns) %*% fund_returns
-
-# Add needed Constraints --> Coeffiecents sum up to one and Non-Negativity
-n <- ncol(factor_returns) -1 #leave out the intercept
-# Constraint Matrix A
-A <- rbind(c(0, rep(1,n)), cbind(0, diag(n)))
-# Right-hand side of the constraints
-b <- c(1, rep(0, n))
-
-# Solve quadratic optimization
-result <- solve.QP(D, d, t(A), b, meq = 1)
-ZZ_coef <- result$solution
-names(ZZ_coef) <- c("Intercept","US Equity","MSCI World","US Gov Bonds","US TBills")
 
 par(mfrow = c(1, 2))
 # Create a bar plot
@@ -282,36 +290,39 @@ barplot(bar_data,
         ylab = "Loading",             # Label for the y-axis
         col = "#0057B8",           # Color of the bars
         border = "black",
-        ylim = c(0, 1))            # Color of the borders around bars
+        ylim = c(0, 1),
+        cex.names = 0.75)            # Color of the borders around bars
 
 # Create a pie chart
 sum <- sum(ZZ_coef)
 style <- sum(ZZ_coef[-1]) / sum
 selection <- ZZ_coef[1] / sum
 pie(c(style,selection), 
-    labels = c("Style","Selection"),             # Adding labels
+    labels = c(paste0("Style [",round(style*100,2),"%]"),paste0("Selection [",round(selection*100,2),"%]")),             # Adding labels
     main = "Style versus Selection",   # Title of the chart
     col = c("#0057B8", "coral"))  # Colors for each slice
 
 # Additional title with the actual fund name
-mtext("Our Portfolio Original", side = 3, line = -1.3, cex = 1.2, adj = 0.5, outer = TRUE, font = 2)
+mtext("ZZ Portfolio Original", side = 3, line = -1.3, cex = 1.2, adj = 0.5, outer = TRUE, font = 2)
 
 par(mfrow = c(1, 1))
 
 
 ## SUBSECTION 3b: ROLLING WINDOW
 
+# Given Funds
+
 style_analysis_rolling <- list()
 
 for(i in (2:4)){
-
-  fund_returns <- as.matrix(GF[,i])  # Fund return vector (T x 1)
+  fund_returns_roll <- as.matrix(GF[,i])  # Fund return vector (T x 1)
+  dates <- GF$Date[-(1:52)]
   weekly_results <- data.frame()
   
   for (j in 53:nrow(factor_returns)){
     date_rolling <- GF$Date[j]
     factor_returns_rolling <- factor_returns[(j-52):j,]
-    fund_returns_rolling <- fund_returns[(j-52):j,]
+    fund_returns_rolling <- fund_returns_roll[(j-52):j,]
     
     # Create needed matrices in the correct form for quadratic programming
     # Matrix D
@@ -332,40 +343,39 @@ for(i in (2:4)){
     # Add to list of style analysis
     weekly_results <- rbind(weekly_results, result$solution)
   }
-  colnames(weekly_results) <- c("Intercept", "US Equity","MSCI World","US Gov Bonds","US TBills")
+  weekly_results <- cbind(dates, weekly_results)
+  colnames(weekly_results) <- c("Date","Intercept", "US Equity","MSCI World","US Gov Bonds","US TBills")
   style_analysis_rolling[[i-1]] <- weekly_results
 }
 
+
 ## SUBSECTION 3b.i: VISUALIZATION
+
+# Choose a softer color palette (e.g., "Set3")
+palette_colors <- brewer.pal(n = length(weekly_results) - 2, "Set3")
+
+
 # Visualize style loadings for given funds
 
 for (i in (1:3)) {
-  par(mfrow = c(1, 2))
+  #melt data 
+  loadings_melted <- melt(style_analysis_rolling[[i]][-2], id.vars = "Date", variable.name = "Asset_Class", value.name = "Loading")
   
-  # Create a bar plot
-  bar_data <- style_analysis_rolling[[i]][-1]
-  names(bar_data) <-  c("US Equity","MSCI World","US Gov Bonds","US TBills")
-  barplot(bar_data, 
-          main = "Style Analysis",  # Title of the chart
-          xlab = "Categories",         # Label for the x-axis
-          ylab = "Loading",             # Label for the y-axis
-          col = "#0057B8",           # Color of the bars
-          border = "black",
-          ylim = c(0, 1))            # Color of the borders around bars
-  
-  # Create a pie chart
-  sum <- sum(style_analysis_rolling[[i]])
-  style <- sum(style_analysis_rolling[[i]][-1]) / sum
-  selection <- style_analysis_rolling[[i]][1] / sum
-  pie(c(style, selection), 
-      labels = c("Style","Selection"),             # Adding labels
-      main = "Style versus Selection",   # Title of the chart
-      col = c("#0057B8", "coral"))  # Colors for each slice
-  
-  # Additional title with the actual fund name
-  mtext(paste0(fund_names[i], " Original Rolling"), side = 3, line = -1.3, cex = 1.2, adj = 0.5, outer = TRUE, font = 2)
-  
-  par(mfrow = c(1, 1))
+  p <- ggplot(loadings_melted, aes(x = Date, y = Loading, fill = Asset_Class)) +
+    geom_area(alpha = 0.8, size = 0.2, colour = "black") +
+    scale_fill_manual(values = palette_colors) +  # Use the softer "Set3" palette
+    labs(
+      title = paste0("Time Series of Portfolio Weights ",fund_names[i]),
+      x = "Date",
+      y = "Style Loadings",
+      fill = "Asset Classes"
+    ) +
+    theme_minimal() +
+    theme(
+      text = element_text(size = 12),
+      legend.position = "bottom"
+    )
+  print(p)
 }
 
 
@@ -386,7 +396,10 @@ factor_returns_add <- as.matrix(GF_Add[,(5:11)])  # Factor return matrix (T x n)
 intercept_col <- rep(1,nrow(factor_returns_add))
 factor_returns_add <- cbind(intercept_col, factor_returns_add)
 
-## SUBSECTION 5a: Additional Asset classes
+
+## SUBSECTION 4a: Additional Asset classes
+
+# GIVEN FUNDS
 
 for(i in (2:4)){
   fund_returns_add <- as.matrix(GF_Add[,i])  # Fund return vector (T x 1)
@@ -411,30 +424,32 @@ for(i in (2:4)){
   style_analysis_add[[i-1]] <- result$solution
 }
 
-############################################################
-## SUBSECTION 5a.i Visualize style loadings for given funds
-############################################################
+# SUBSECTION 4a.i Visualize style loadings for given funds
+
 
 for (i in (1:3)) {
   par(mfrow = c(1, 2))
   
   # Create a bar plot
   bar_data <- style_analysis_add[[i]][-1]
-  names(bar_data) <-  c("US Equity","MSCI World","US Gov Bonds","US TBills",
-                        "EURIBOR3M","EM Gov Bonds","Commodities")
+  names(bar_data) <-  c("US Equity","MSCI","US Gov B","US TBills",
+                        "EURIBOR","EM Gov B","Commodities")
   barplot(bar_data, 
           main = "Style Analysis",   # Title of the chart
           xlab = "Categories",       # Label for the x-axis
           ylab = "Loading",          # Label for the y-axis
           col = "#0057B8",           # Color of the bars
-          border = "black")          # Color of the borders around bars
+          border = "black",
+          ylim = c(0,1),
+          cex.names = 0.7
+          )          # Color of the borders around bars
   
   # Create a pie chart
   sum <- sum(style_analysis_add[[i]])
   style <- sum(style_analysis_add[[i]][-1]) / sum
   selection <- style_analysis_add[[i]][1] / sum
   pie(c(style,selection), 
-      labels = c("Style","Selection"),   # Adding labels
+      labels = c(paste0("Style [",round(style*100,2),"%]"),paste0("Selection [",round(selection*100,2),"%]")),    # Adding labels,   # Adding labels
       main = "Style versus Selection",   # Title of the chart
       col = c("#0057B8", "coral"))       # Colors for each slice
   
@@ -444,9 +459,8 @@ for (i in (1:3)) {
   par(mfrow = c(1, 1))
 }
 
-############################################################
-## ZZ Portfolio with additional asset classes
-############################################################
+
+##ZZ Portfolio
 
 ZZ_add <- inner_join(data.frame(Date = index(ZZ_ret_w),coredata(ZZ_ret_w)),
                      data.frame(Date = index(AC_ret_w),coredata(AC_ret_w)),by = "Date")
@@ -454,20 +468,20 @@ ZZ_add <- inner_join(ZZ_add,
                      data.frame(Date = index(Add_AC_ret_w),coredata(Add_AC_ret_w)),by = "Date")
 
 
-factor_returns_add <- as.matrix(ZZ_add[,(3:9)])  # Factor return matrix (T x n)
+factor_returns_add_zz <- as.matrix(ZZ_add[,(3:9)])  # Factor return matrix (T x n)
 # Add a column of 1s to the factor return matrix for analyzing an intercept alpha
-intercept_col <- rep(1,nrow(factor_returns_add))
-factor_returns_add <- cbind(intercept_col, factor_returns_add)
-fund_returns_add <- as.matrix(ZZ_add[,2])  # Fund return vector (T x 1)
+intercept_col <- rep(1,nrow(factor_returns_add_zz))
+factor_returns_add_zz <- cbind(intercept_col, factor_returns_add_zz)
+fund_returns_add_zz <- as.matrix(ZZ_add[,2])  # Fund return vector (T x 1)
 
 # Create needed matrices in the correct form for quadratic programming
 # Matrix D
-D <- 2 * t(factor_returns_add) %*% factor_returns_add
+D <- 2 * t(factor_returns_add_zz) %*% factor_returns_add_zz
 # Linear term d
-d <- 2 * t(factor_returns_add) %*% fund_returns_add
+d <- 2 * t(factor_returns_add_zz) %*% fund_returns_add_zz
 
 # Add needed Constraints --> Coeffiecents sum up to one and Non-Negativity
-n <- ncol(factor_returns_add) -1 #leave out the intercept
+n <- ncol(factor_returns_add_zz) -1 #leave out the intercept
 # Constraint Matrix A
 A <- rbind(c(0, rep(1,n)), cbind(0, diag(n)))
 # Right-hand side of the constraints
@@ -483,40 +497,43 @@ par(mfrow = c(1, 2))
 
 # Create a bar plot
 bar_data <- ZZ_coef_add[-1]
-names(bar_data) <-  c("US Equity","MSCI World","US Gov Bonds","US TBills",
-                      "EURIBOR3M","EM Gov Bonds","Commodities")
+names(bar_data) <-  c("US Equity","MSCI","US Gov B","US TBills",
+                      "EURIBOR","EM Gov B","Commodities")
 barplot(bar_data, 
         main = "Style Analysis",  # Title of the chart
         xlab = "Categories",      # Label for the x-axis
         ylab = "Loading",         # Label for the y-axis
         col = "#0057B8",          # Color of the bars
-        border = "black")         # Color of the borders around bars
+        border = "black",
+        ylim = c(0,1),
+        cex.names = 0.7)         # Color of the borders around bars
 
 # Create a pie chart
 sum <- sum(ZZ_coef_add)
 style <- sum(ZZ_coef_add[-1]) / sum
 selection <- ZZ_coef_add[1] / sum
 pie(c(style,selection), 
-    labels = c("Style","Selection"),    # Adding labels
+    labels = c(paste0("Style [",round(style*100,2),"%]"),paste0("Selection [",round(selection*100,2),"%]")),    # Adding labels
     main = "Style versus Selection",    # Title of the chart
     col = c("#0057B8", "coral"))        # Colors for each slice
 
 # Additional title with the actual fund name
-mtext("Our Portfolio Additional Assets", side = 3, line = -1.3, cex = 1.2, adj = 0.5, outer = TRUE, font = 2)
+mtext("ZZ Portfolio Additional Assets", side = 3, line = -1.3, cex = 1.2, adj = 0.5, outer = TRUE, font = 2)
 
 par(mfrow = c(1, 1))
 
-## SUBSECTION 5b: ROLLING WINDOW
+## SUBSECTION 4b: ROLLING WINDOW
 
 style_analysis_add_rolling <- list()
 
 for(i in (2:4)){
   
-  fund_returns_add <- as.matrix(GF_add[,i])  # Fund return vector (T x 1)
+  fund_returns_add <- as.matrix(GF_Add[,i])  # Fund return vector (T x 1)
   weekly_results_add <- data.frame()
+  dates <- GF_Add$Date[-(1:52)]
   
   for (j in 53:nrow(factor_returns_add)){
-    date_add_rolling <- GF_add$Date[j]
+    date_add_rolling <- GF_Add$Date[j]
     factor_returns_add_rolling <- factor_returns_add[(j-52):j,]
     fund_returns_add_rolling <- fund_returns_add[(j-52):j,]
     
@@ -539,78 +556,43 @@ for(i in (2:4)){
     # Add to list of style analysis
     weekly_results_add <- rbind(weekly_results_add, result$solution)
   }
-  colnames(weekly_results_add) <- c("Intercept", "US Equity","MSCI World","US Gov Bonds","US TBills")
+  weekly_results_add <- cbind(dates, weekly_results_add)
+  colnames(weekly_results_add) <- c("Date","Intercept", "US Equity","MSCI World","US Gov Bonds","US TBills","EURIBOR3M","EM Gov Bonds","Commodities")
   style_analysis_add_rolling[[i-1]] <- weekly_results_add
 }
 
-## SUBSECTION 5b.i Visualize style loadings for given funds
+## SUBSECTION 4b.i Visualize style loadings for given funds
 
-# --- Visualization for the three funds ---
+palette_colors <- brewer.pal(n = length(weekly_results_add) - 2, "Set3")
+
+
 for (i in 1:3) {
-  par(mfrow = c(1, 2))
+  #melt data 
+  loadings_melted_add_rolling <- melt(style_analysis_add_rolling[[i]][-2], id.vars = "Date", variable.name = "Asset_Class", value.name = "Loading")
   
-  # Create a bar plot of factor loadings (exclude the intercept)
-  bar_data <- style_analysis_5b[[i]][-1]
-  names(bar_data) <- c("US Equity", "MSCI World", "US Gov Bonds", 
-                       "US TBills", "EURIBOR3M", "EM Gov Bonds", 
-                       "Commodities")
-  barplot(bar_data, 
-          main   = "Style Analysis",   
-          xlab   = "Categories",       
-          ylab   = "Loading",          
-          col    = "#0057B8",          
-          border = "black")
-  
-  # Create a pie chart for Style vs. Selection
-  total       = sum(style_analysis_5b[[i]])
-  style_frac  = sum(style_analysis_5b[[i]][-1]) / total
-  selection   = style_analysis_5b[[i]][1] / total
-  
-  pie(c(style_frac, selection), 
-      labels = c("Style", "Selection"),
-      main   = "Style versus Selection",
-      col    = c("#0057B8", "coral"))
-  
-  # Additional title with the actual fund name
-  mtext(fund_names[i], side = 3, line = -1.3, cex = 1.2, adj = 0.5, outer = TRUE, font = 2)
-  
-  par(mfrow = c(1, 1))
+  p <- ggplot(loadings_melted_add_rolling, aes(x = Date, y = Loading, fill = Asset_Class)) +
+    geom_area(alpha = 0.8, size = 0.2, colour = "black") +
+    scale_fill_manual(values = palette_colors) +  # Use the softer "Set3" palette
+    labs(
+      title = paste0("Time Series of Portfolio Weights ",fund_names[i]),
+      x = "Date",
+      y = "Style Loadings",
+      fill = "Asset Classes"
+    ) +
+    theme_minimal() +
+    theme(
+      text = element_text(size = 12),
+      legend.position = "bottom"
+    )
+  print(p)
+       
 }
 
-# --- Visualization for YOUR PORTFOLIO (5b) ---
 
-# Suppose after 5b calculations, you have a result like `result_5b` 
-# and final coefficients in `ZZ_coef_5b`. For instance:
-#    ZZ_coef_5b <- result_5b$solution
-#    names(ZZ_coef_5b) <- c("Intercept", ...)
 
-# Then you can mirror the same style:
 
-par(mfrow = c(1, 2))
 
-# Bar plot (excluding the intercept)
-bar_data_port <- ZZ_coef_5b[-1]
-names(bar_data_port) <- c("US Equity", "MSCI World", "US Gov Bonds", 
-                          "US TBills", "EURIBOR3M", "EM Gov Bonds", 
-                          "Commodities")
-barplot(bar_data_port,
-        main   = "Style Analysis",
-        xlab   = "Categories",
-        ylab   = "Loading",
-        col    = "#0057B8",
-        border = "black")
 
-# Pie chart (style vs selection)
-total_port  = sum(ZZ_coef_5b)
-style_port  = sum(ZZ_coef_5b[-1]) / total_port
-selection_p = ZZ_coef_5b[1] / total_port
 
-pie(c(style_port, selection_p), 
-    labels = c("Style", "Selection"),
-    main   = "Style versus Selection",
-    col    = c("#0057B8", "coral"))
 
-# Additional title with the actual fund name
-mtext("Our Portfolio", side = 3, line = -1.3, cex = 1.2, adj = 0.5, outer = TRUE, font = 2)
 
-par(mfrow = c(1, 1))
