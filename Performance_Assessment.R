@@ -379,11 +379,13 @@ acc_returns <- acc_returns[, -c(2:9)]
 
 
 
-# plotting accumulated returns series
+library(ggplot2)
+library(scales)
+
 ggplot(
   tidyr::pivot_longer(acc_returns, cols = -date, 
                       names_to = "Fund", values_to = "Accumulated_Return"),
-  aes(x = date, y = Accumulated_Return*100, color = Fund)
+  aes(x = date, y = Accumulated_Return, color = Fund)
 ) +
   geom_line(size = 1) +
   labs(
@@ -391,14 +393,29 @@ ggplot(
     x = "Date",
     y = "Cumulative Returns"
   ) +
-  scale_y_continuous(labels = percent_format(scale = 1)) +
-  scale_color_manual(values = cb_colors) +
+  scale_color_manual(
+    values = cb_colors,
+    breaks = c(
+      "aqr.acc", "brk.acc", "spdr.acc", 
+      "t30.acc", "i25.acc", "t50.acc", 
+      "wexus.acc", "usgyt.acc", "portfolio"
+    ),
+    labels = c(
+      "AQR Style Premia Fund",
+      "Berkshire Hathaway Inc",
+      "SPDR S&P 500 ETF Trust",
+      "US 2030 Target Fund",
+      "US 2025 Target Fund",
+      "US 2050 Target Fund",
+      "MSCI World ex US",
+      "Bloomberg US Treasury Unhedged",
+      "ZZ Portfolio"
+    )
+  ) +
   theme_minimal(base_size = 12) +
   theme(
-    # IBCS style adjustments:
     panel.grid.major = element_line(color = "grey80", size = 0.5),
     axis.title = element_text(face = "bold"),
     axis.text = element_text(color = "black"),
     plot.title = element_text(face = "bold", hjust = 0.5)
   )
-
