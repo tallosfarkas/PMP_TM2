@@ -38,26 +38,18 @@ fund_names <- c("AQR Fund", "Berkshire Hathaway", "SP500 Index")
 
 # ZZ Portfolio 2024
 
-ZZ_TRI <- price_wide %>%
-  mutate(total_sum = rowSums(across(-1), na.rm = TRUE))
+ZZ_ret <- Jensen_data[,c(1,3)] #Jensen Data comes from the Performance Analysis
 
-ZZ_ret <- ZZ_TRI  %>%
-  mutate(
-    zz_ret = (total_sum / lag(total_sum)) - 1
-  )
-
-dim(ZZ_ret)
-ZZ_ret <- ZZ_ret[,-(2:18)]
 
 # Asset Classes / Regressors
 # US Equity, MSCI World, US T-Bills, US government bonds
 
 #Price Data
-us_equity <- bloomberg_data[[1]]
+us_equity <- benchmarkData[[1]]
 colnames(us_equity) <- c("date","us.equity.PX")
-msci_world <- bloomberg_data[[2]]
+msci_world <- benchmarkData[[2]]
 colnames(msci_world) <- c("date","msciworld.PX")
-us_govbonds <- bloomberg_data[[3]]
+us_govbonds <- benchmarkData[[3]]
 colnames(us_govbonds) <- c("date","us.govbonds.PX")
 
 us_tbill <- tbill_daily %>%
@@ -84,6 +76,8 @@ AC_ret <- AC %>%
 AC_ret <- AC_ret[,-(2:5)]
 
 # New Asset Classes 
+
+# from RData additional asset classes
 
 euribor_3M <- bloomberg_data_add[[1]]
 colnames(euribor_3M) <- c("date","EURIBOR3M.PX")
@@ -287,7 +281,8 @@ barplot(bar_data,
         xlab = "Categories",         # Label for the x-axis
         ylab = "Loading",             # Label for the y-axis
         col = "#0057B8",           # Color of the bars
-        border = "black")            # Color of the borders around bars
+        border = "black",
+        ylim = c(0, 1))            # Color of the borders around bars
 
 # Create a pie chart
 sum <- sum(ZZ_coef)
