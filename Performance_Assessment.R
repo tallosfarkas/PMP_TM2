@@ -258,6 +258,92 @@ str(brk_indices_holdings)
 str(aqr_port)
 str(target_funds)
 
+
+############ trying to sort the plots
+
+
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(forcats)
+library(gridExtra)
+
+# Define your custom palette (8 provided colors plus 3 additional ones)
+custom_palette <- c("#d5c4b4","#c6b7a1", "#b7aa8e", "#afa98d",
+                    "#a99177", "#a27968", "#966160", "#844d5f",
+                    "#6a3d60","#45325f","#002a5a")
+
+# Pivot the data to long format (asset classes in `...1`, funds in 'Fund')
+long_data <- pivot_longer(
+  brk_indices_holdings, 
+  cols = -`...1`, 
+  names_to = "Fund", 
+  values_to = "Weight"
+)
+
+# (Optional) Reorder funds on the x-axis by total weight if desired:
+long_data <- long_data %>%
+  group_by(Fund) %>%
+  mutate(total_weight = sum(Weight, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(Fund = fct_reorder(Fund, total_weight, .desc = FALSE))
+
+# Choose three funds to plot.
+# (Here we take the first three funds in the sorted order; adjust as needed)
+fund_list <- unique(long_data$Fund)[1:3]
+
+# Create a list of plots—each plot will be a 100% stacked bar for one fund.
+plots <- lapply(fund_list, function(fund_name) {
+  data_fund <- filter(long_data, Fund == fund_name)
+  
+  # For each fund, reorder asset classes by Weight (ascending) individually:
+  data_fund$`...1` <- factor(data_fund$`...1`, 
+                             levels = data_fund$`...1`[order(data_fund$Weight)])
+  
+  ggplot(data_fund, aes(x = Fund, y = Weight, fill = `...1`)) +
+    # Use position = "fill" for 100% stacked bars
+    geom_bar(stat = "identity", width = 0.7, color = "black", position = "fill") +
+    labs(title = fund_name, x = "Fund", y = "Proportion", fill = "Sector") +
+    scale_y_continuous(expand = c(0, 0), labels = percent_format(accuracy = 1)) +
+    scale_fill_manual(values = custom_palette) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_line(color = "grey80", size = 0.5),
+      axis.title = element_text(face = "bold"),
+      axis.text = element_text(color = "black"),
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.title = element_text(face = "bold")
+    )
+})
+
+# Arrange the three plots in a 1 x 3 layout
+grid.arrange(grobs = plots, nrow = 1)
+
+
+
+
+
+
+
+
+
+########## finished trying
+
+
+
+
+
+
+
+
+
+
+
 library(ggplot2)
 library(tidyr)
 library(RColorBrewer)
