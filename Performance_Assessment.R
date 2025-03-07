@@ -217,3 +217,188 @@ results_list <- lapply(tri_cols, function(fund) {
 results_df <- do.call(rbind, results_list)
 print(results_df)
 
+# Nice table
+# install.packages("stargazer") # if not already installed
+library(stargazer)
+
+# Ensure results_df is in the column order you want:
+results_df <- results_df[, c(
+  "Fund", "Beta", "JensenAlpha", "MultifactorAlpha",
+  "SharpeRatio", "TreynorRatio", "TrackingError",
+  "InformationRatio", "AnnualReturn"
+)]
+#to results_df add a new line for Fund Portfolio
+results_df <- rbind(results_df, c("Portfolio", portfolio_beta, mean(Jensen_data$Jensen_Alpha), portfolio_alpha, Sharpe_ratio, Treynor_ratio, tracking_error, information_ratio, portfolio_ret_1_Y))
+
+# Rounding
+results_df_rounded <- results_df 
+str(results_df_rounded)
+results_df_rounded[,2:9] <- lapply(results_df_rounded[,2:9], function(x) as.numeric(as.character(x)))
+results_df_rounded <- results_df_rounded %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4)))
+
+# Create a stargazer table (plain text)
+stargazer(
+  results_df_rounded,
+  type    = "text",       # for console/text output. Use "latex" or "html" as needed.
+  summary = FALSE,        # don't print summary stats
+  rownames = FALSE,       # don't show row names
+  digits = 4,             # decimal places
+  title = "Performance Metrics",
+  label = "tab:performance_metrics"
+)
+
+
+### Visualizing Funds Holdings###
+#import Fund_Holdings.xlsx
+brk_indices_holdings <- readxl::read_xlsx("Fund_Holdings.xlsx", sheet = 1)
+aqr_port <- readxl::read_xlsx("Fund_Holdings.xlsx", sheet = 2)
+target_funds <- readxl::read_xlsx("Fund_Holdings.xlsx", sheet = 3)
+str(brk_indices_holdings)
+str(aqr_port)
+str(target_funds)
+
+library(ggplot2)
+library(tidyr)
+library(RColorBrewer)
+library(scales)
+
+# Define a color-blind friendly base palette (Okabe-Ito)
+cb_palette <- c("#E69F00", "#56B4E9", "#009E73", 
+                "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+
+n_sectors <- length(unique(brk_indices_holdings$`...1`))
+cb_colors <- colorRampPalette(cb_palette)(n_sectors)
+
+ggplot(
+  tidyr::pivot_longer(brk_indices_holdings, cols = -`...1`, 
+                      names_to = "Fund", values_to = "Weight"),
+  aes(x = Fund, y = Weight*100, fill = `...1`)
+) +
+  geom_bar(stat = "identity", width = 0.7, color = "black") +
+  labs(
+    title = "Fund Holdings Breakdown",
+    x = "Fund",
+    y = "Weight (%)",
+    fill = "Sector"
+  ) +
+  scale_y_continuous(expand = c(0, 0), labels = percent_format(scale = 1)) +
+  scale_fill_manual(values = cb_colors) +
+  theme_minimal(base_size = 12) +
+  theme(
+    # IBCS style adjustments:
+    panel.grid.major.x = element_blank(),          # Remove vertical gridlines
+    panel.grid.minor = element_blank(),              # Remove minor gridlines
+    panel.grid.major.y = element_line(color = "grey80", size = 0.5),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "black"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.title = element_text(face = "bold")
+  )
+
+
+
+ggplot(
+  tidyr::pivot_longer(aqr_port, cols = -`...1`, 
+                      names_to = "Fund", values_to = "Weight"),
+  aes(x = Fund, y = Weight*100, fill = `...1`)
+) +
+  geom_bar(stat = "identity", width = 0.7, color = "black") +
+  labs(
+    title = "Fund Holdings Breakdown",
+    x = "Fund",
+    y = "Weight (%)",
+    fill = "Asset Class"
+  ) +
+  scale_y_continuous(expand = c(0, 0), labels = percent_format(scale = 1)) +
+  scale_fill_manual(values = cb_colors) +
+  theme_minimal(base_size = 12) +
+  theme(
+    # IBCS style adjustments:
+    panel.grid.major.x = element_blank(),          # Remove vertical gridlines
+    panel.grid.minor = element_blank(),              # Remove minor gridlines
+    panel.grid.major.y = element_line(color = "grey80", size = 0.5),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "black"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.title = element_text(face = "bold")
+  )
+
+
+
+ggplot(
+  tidyr::pivot_longer(target_funds, cols = -`Asset_Class`, 
+                      names_to = "Fund", values_to = "Weight"),
+  aes(x = Fund, y = Weight*100, fill = `Asset_Class`)
+) +
+  geom_bar(stat = "identity", width = 0.7, color = "black") +
+  labs(
+    title = "Fund Holdings Breakdown",
+    x = "Fund",
+    y = "Weight (%)",
+    fill = "Asset Class"
+  ) +
+  scale_y_continuous(expand = c(0, 0), labels = percent_format(scale = 1)) +
+  scale_fill_manual(values = cb_colors) +
+  theme_minimal(base_size = 12) +
+  theme(
+    # IBCS style adjustments:
+    panel.grid.major.x = element_blank(),          # Remove vertical gridlines
+    panel.grid.minor = element_blank(),              # Remove minor gridlines
+    panel.grid.major.y = element_line(color = "grey80", size = 0.5),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "black"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.title = element_text(face = "bold")
+  )
+
+### calculate accumulated returns
+acc_returns <- data_merged %>%
+  # Keep only date and the .TRI columns
+  select(date, ends_with(".TRI")) %>%
+  # For each .TRI column, divide by its first value, and rename columns
+  mutate(
+    across(
+      ends_with(".TRI"), 
+      ~ .x / first(.x), 
+      .names = "{sub('.TRI','',.col)}.acc"  # rename aqr.TRI -> aqr.acc, etc.
+    )
+  )
+
+acc_returns <- acc_returns %>%
+  # Join the Portfolio_value by matching date
+  left_join(
+    select(Jensen_data, date, Portfolio_value),
+    by = "date"
+  ) %>%
+  # Calculate accumulated returns: ratio to the first row’s Portfolio_value
+  mutate(portfolio = Portfolio_value / first(Portfolio_value)) %>%
+  # (Optional) drop the Portfolio_value column if you only need 'portfolio'
+  select(-Portfolio_value) 
+acc_returns <- acc_returns[, -c(2:9)]
+
+
+
+# plotting accumulated returns series
+ggplot(
+  tidyr::pivot_longer(acc_returns, cols = -date, 
+                      names_to = "Fund", values_to = "Accumulated_Return"),
+  aes(x = date, y = Accumulated_Return*100, color = Fund)
+) +
+  geom_line(size = 1) +
+  labs(
+    title = "Cumulative Returns 2024",
+    x = "Date",
+    y = "Cumulative Returns"
+  ) +
+  scale_y_continuous(labels = percent_format(scale = 1)) +
+  scale_color_manual(values = cb_colors) +
+  theme_minimal(base_size = 12) +
+  theme(
+    # IBCS style adjustments:
+    panel.grid.major = element_line(color = "grey80", size = 0.5),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "black"),
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+
