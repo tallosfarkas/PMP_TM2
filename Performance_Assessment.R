@@ -1,3 +1,5 @@
+#### load libraries ####
+
 library(pmp.engine)
 library(lubridate)
 library(Rblpapi)
@@ -7,12 +9,16 @@ library(dplyr)
 library(tidyr)
 library(imputeTS)
 library(zoo)
+library(ggplot2)
+library(scales)
+library(forcats)
+library(gridExtra)
 
 blpConnect()
 
-######################
-### Jensen´s Alpha ###
-######################
+
+#### Jensen´s Alpha ####
+
 
 ### Creating the dataset
 port_ret = readxl::read_xlsx("C:/Users/Student2.AzureAD/ZZ Vermögensverwaltung GmbH/ISK-Wien - General/ZZ Gruppe/2024/Personal/Farkas/PMP_TM2/portfolio_returns.xlsx", sheet = 1)
@@ -249,7 +255,7 @@ stargazer(
 )
 
 
-### Visualizing Funds Holdings###
+####  Visualizing Funds Holdings ####
 #import Fund_Holdings.xlsx
 brk_indices_holdings <- readxl::read_xlsx("Fund_Holdings.xlsx", sheet = 1)
 aqr_port <- readxl::read_xlsx("Fund_Holdings.xlsx", sheet = 2)
@@ -259,17 +265,9 @@ str(aqr_port)
 str(target_funds)
 
 
-############ trying to sort the plots
+############ Trying to sort the plots ########
 
 
-
-
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(scales)
-library(forcats)
-library(gridExtra)
 
 # Define your custom palette (8 provided colors plus 3 additional ones)
 custom_palette <- c("#d5c4b4","#c6b7a1", "#b7aa8e", "#afa98d",
@@ -329,7 +327,126 @@ grid.arrange(grobs = plots, nrow = 1)
 
 
 
+##### AQR and ZZ portfolio #####
 
+
+# Define your custom palette (5 colors)
+custom_palette2 <- c( "#d5c4b4", "#b7aa8e","#a27968", "#844d5f","#002a5a")
+
+# Pivot the data to long format (asset classes in `...1`, funds in 'Fund')
+long_data <- pivot_longer(
+  aqr_port, 
+  cols = -`...1`, 
+  names_to = "Fund", 
+  values_to = "Weight"
+)
+
+# (Optional) Reorder funds on the x-axis by total weight if desired:
+long_data <- long_data %>%
+  group_by(Fund) %>%
+  mutate(total_weight = sum(Weight, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(Fund = fct_reorder(Fund, total_weight, .desc = FALSE))
+
+# Choose three funds to plot.
+# (Here we take the first three funds in the sorted order; adjust as needed)
+fund_list <- unique(long_data$Fund)[1:2]
+
+# Create a list of plots—each plot will be a 100% stacked bar for one fund.
+plots <- lapply(fund_list, function(fund_name) {
+  data_fund <- filter(long_data, Fund == fund_name)
+  
+  # For each fund, reorder asset classes by Weight (ascending) individually:
+  data_fund$`...1` <- factor(data_fund$`...1`, 
+                             levels = data_fund$`...1`[order(data_fund$Weight)])
+  
+  ggplot(data_fund, aes(x = Fund, y = Weight, fill = `...1`)) +
+    # Use position = "fill" for 100% stacked bars
+    geom_bar(stat = "identity", width = 0.7, color = "black", position = "fill") +
+    labs(title = fund_name, x = "Fund", y = "Proportion", fill = "Sector") +
+    scale_y_continuous(expand = c(0, 0), labels = percent_format(accuracy = 1)) +
+    scale_fill_manual(values = custom_palette2) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_line(color = "grey80", size = 0.5),
+      axis.title = element_text(face = "bold"),
+      axis.text = element_text(color = "black"),
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.title = element_text(face = "bold")
+    )
+})
+
+# Arrange the three plots in a 1 x 3 layout
+grid.arrange(grobs = plots, nrow = 1)
+
+
+
+
+
+##### Target Funds #####  
+# changes the order of the columns in target_funds
+str(target_funds)
+# str(target_funds)
+# tibble [5 × 4] (S3: tbl_df/tbl/data.frame)
+# $ Asset_Class               : chr [1:5] "U.S. Equities" "U.S. Bonds" "Cash" "Non-U.S. Equities" ...
+# $ American_Funds_2030_Target: num [1:5] 0.439 0.342 0.04 0.139 0.04
+# $ American_Funds_2025_Target: num [1:5] 0.355 0.44 0.044 0.111 0.05
+# $ American_Funds_2050_Target: num [1:5] 0.631 0.078 0.036 0.238 0.017
+# the order should be: 2025, 2030, 2050
+target_funds <- target_funds %>%
+  select(Asset_Class, American_Funds_2025_Target, American_Funds_2030_Target, American_Funds_2050_Target)
+
+
+
+# Pivot the data to long format (asset classes in `...1`, funds in 'Fund')
+long_data <- pivot_longer(
+  target_funds, 
+  cols = -`Asset_Class`, 
+  names_to = "Fund", 
+  values_to = "Weight"
+)
+
+# (Optional) Reorder funds on the x-axis by total weight if desired:
+long_data <- long_data %>%
+  group_by(Fund) %>%
+  mutate(total_weight = sum(Weight, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(Fund = fct_reorder(Fund, total_weight, .desc = FALSE))
+
+# Choose three funds to plot.
+# (Here we take the first three funds in the sorted order; adjust as needed)
+fund_list <- unique(long_data$Fund)[1:3]
+
+# Create a list of plots—each plot will be a 100% stacked bar for one fund.
+plots <- lapply(fund_list, function(fund_name) {
+  data_fund <- filter(long_data, Fund == fund_name)
+  
+  # For each fund, reorder asset classes by Weight (ascending) individually:
+  data_fund$`Asset_Class` <- factor(data_fund$`Asset_Class`, 
+                             levels = data_fund$`Asset_Class`[order(data_fund$Weight)])
+  
+  ggplot(data_fund, aes(x = Fund, y = Weight, fill = `Asset_Class`)) +
+    # Use position = "fill" for 100% stacked bars
+    geom_bar(stat = "identity", width = 0.7, color = "black", position = "fill") +
+    labs(title = fund_name, x = "Fund", y = "Proportion", fill = "Sector") +
+    scale_y_continuous(expand = c(0, 0), labels = percent_format(accuracy = 1)) +
+    scale_fill_manual(values = custom_palette2) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_line(color = "grey80", size = 0.5),
+      axis.title = element_text(face = "bold"),
+      axis.text = element_text(color = "black"),
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.title = element_text(face = "bold")
+    )
+})
+
+# Arrange the three plots in a 1 x 3 layout
+grid.arrange(grobs = plots, nrow = 1)
 
 
 ########## finished trying
