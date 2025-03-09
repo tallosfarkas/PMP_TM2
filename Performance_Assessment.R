@@ -1,5 +1,6 @@
 #### load libraries ####
 
+# install_github("Jaekoeb/pmp.engine")
 library(pmp.engine)
 library(lubridate)
 library(Rblpapi)
@@ -14,14 +15,14 @@ library(scales)
 library(forcats)
 library(gridExtra)
 
-blpConnect()
+# blpConnect()
 
 
 #### Jensen´s Alpha ####
 
 
 ### Creating the dataset
-port_ret = readxl::read_xlsx("C:/Users/Student2.AzureAD/ZZ Vermögensverwaltung GmbH/ISK-Wien - General/ZZ Gruppe/2024/Personal/Farkas/PMP_TM2/portfolio_returns.xlsx", sheet = 1)
+# port_ret = readxl::read_xlsx("C:/Users/Student2.AzureAD/ZZ Vermögensverwaltung GmbH/ISK-Wien - General/ZZ Gruppe/2024/Personal/Farkas/PMP_TM2/portfolio_returns.xlsx", sheet = 1)
 port_ret_f <- port_ret[port_ret$date >= as.Date("2024-01-02"), ]
 port_ret_f <- port_ret_f[port_ret_f$date <= as.Date("2024-12-31"), ]
 port_ret_f$date = as.Date(port_ret_f$date)
@@ -115,8 +116,8 @@ information_ratio = (portfolio_ret_1_Y - MSCI_ret_1_Y)/tracking_error
 information_ratio
 
 
-# export the daily poprtfolio return to a .rda file
-save(Jensen_data, file = "C:/Users/Student2.AzureAD/ZZ Vermögensverwaltung GmbH/ISK-Wien - General/ZZ Gruppe/2024/Personal/Farkas/PMP_TM2/Jensen_data.rda")
+# # export the daily poprtfolio return to a .rda file
+# save(Jensen_data, file = "C:/Users/Student2.AzureAD/ZZ Vermögensverwaltung GmbH/ISK-Wien - General/ZZ Gruppe/2024/Personal/Farkas/PMP_TM2/Jensen_data.rda")
 
 cleanPortfolioDT
 head(cleanPortfolioDT)
@@ -622,3 +623,4 @@ ggplot(
     axis.text = element_text(color = "black"),
     plot.title = element_text(face = "bold", hjust = 0.5)
   )
+
